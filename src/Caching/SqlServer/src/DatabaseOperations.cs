@@ -80,26 +80,96 @@ namespace Microsoft.Extensions.Caching.SqlServer
 
         public virtual byte[] GetCacheItem(string key)
         {
-            return GetCacheItem(key, includeValue: true);
-        }
+            var utcNow = SystemClock.UtcNow;
 
+            using (var connection = new SqlConnection(ConnectionString))
+            using (var command = new SqlCommand(SqlQueries.GetCacheItem, connection))
+            {
+                command.Parameters
+                    .AddCacheItemId(key)
+                    .AddWithValue("UtcNow", SqlDbType.DateTimeOffset, utcNow);
+
+                connection.Open();
+
+                using (var reader = command.ExecuteReader(
+                    CommandBehavior.SequentialAccess | CommandBehavior.SingleRow | CommandBehavior.SingleResult))
+                {
+                    if (reader.Read())
+                    {
+                        return reader.GetFieldValue<byte[]>(Columns.Indexes.CacheItemValueIndex);
+                    }
+                    else
+                    {
+                        return null;
+                    }
+                }
+            }
+        }
         public virtual async Task<byte[]> GetCacheItemAsync(string key, CancellationToken token = default(CancellationToken))
         {
             token.ThrowIfCancellationRequested();
 
-            return await GetCacheItemAsync(key, includeValue: true, token: token).ConfigureAwait(false);
+            var utcNow = SystemClock.UtcNow;
+
+            using (var connection = new SqlConnection(ConnectionString))
+            using (var command = new SqlCommand(SqlQueries.GetCacheItem, connection))
+            {
+                command.Parameters
+                    .AddCacheItemId(key)
+                    .AddWithValue("UtcNow", SqlDbType.DateTimeOffset, utcNow);
+
+                await connection.OpenAsync(token).ConfigureAwait(false);
+
+                using (var reader = await command.ExecuteReaderAsync(
+                    CommandBehavior.SequentialAccess | CommandBehavior.SingleRow | CommandBehavior.SingleResult,
+                    token).ConfigureAwait(false))
+                {
+                    if (await reader.ReadAsync(token).ConfigureAwait(false))
+                    {
+                        return await reader.GetFieldValueAsync<byte[]>(Columns.Indexes.CacheItemValueIndex, token).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        return null;
+                    }
+                }
+            }
         }
 
-        public void RefreshCacheItem(string key)
+        public virtual void RefreshCacheItem(string key)
         {
-            GetCacheItem(key, includeValue: false);
+            var utcNow = SystemClock.UtcNow;
+
+            using (var connection = new SqlConnection(ConnectionString))
+            using (var command = new SqlCommand(SqlQueries.UpdateExpirationDate, connection))
+            {
+                command.Parameters
+                    .AddCacheItemId(key)
+                    .AddWithValue("UtcNow", SqlDbType.DateTimeOffset, utcNow);
+
+                connection.Open();
+
+                command.ExecuteNonQuery();
+            }
         }
 
-        public async Task RefreshCacheItemAsync(string key, CancellationToken token = default(CancellationToken))
+        public virtual async Task RefreshCacheItemAsync(string key, CancellationToken token = default(CancellationToken))
         {
             token.ThrowIfCancellationRequested();
 
-            await GetCacheItemAsync(key, includeValue: false, token:token).ConfigureAwait(false);
+            var utcNow = SystemClock.UtcNow;
+
+            using (var connection = new SqlConnection(ConnectionString))
+            using (var command = new SqlCommand(SqlQueries.UpdateExpirationDate, connection))
+            {
+                command.Parameters
+                    .AddCacheItemId(key)
+                    .AddWithValue("UtcNow", SqlDbType.DateTimeOffset, utcNow);
+
+                await connection.OpenAsync(token).ConfigureAwait(false);
+
+                await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+            }
         }
 
         public virtual void DeleteExpiredCacheItems()
@@ -193,97 +263,6 @@ namespace Microsoft.Extensions.Caching.SqlServer
                     }
                 }
             }
-        }
-
-        protected virtual byte[] GetCacheItem(string key, bool includeValue)
-        {
-            var utcNow = SystemClock.UtcNow;
-
-            string query;
-            if (includeValue)
-            {
-                query = SqlQueries.GetCacheItem;
-            }
-            else
-            {
-                query = SqlQueries.GetCacheItemWithoutValue;
-            }
-
-            byte[] value = null;
-            using (var connection = new SqlConnection(ConnectionString))
-            using (var command = new SqlCommand(query, connection))
-            {
-                command.Parameters
-                    .AddCacheItemId(key)
-                    .AddWithValue("UtcNow", SqlDbType.DateTimeOffset, utcNow);
-
-                connection.Open();
-
-                using (var reader = command.ExecuteReader(
-                    CommandBehavior.SequentialAccess | CommandBehavior.SingleRow | CommandBehavior.SingleResult))
-                {
-                    if (reader.Read())
-                    {
-                        if (includeValue)
-                        {
-                            value = reader.GetFieldValue<byte[]>(Columns.Indexes.CacheItemValueIndex);
-                        }
-                    }
-                    else
-                    {
-                        return null;
-                    }
-                }
-            }
-
-            return value;
-        }
-
-        protected virtual async Task<byte[]> GetCacheItemAsync(string key, bool includeValue, CancellationToken token = default(CancellationToken))
-        {
-            token.ThrowIfCancellationRequested();
-
-            var utcNow = SystemClock.UtcNow;
-
-            string query;
-            if (includeValue)
-            {
-                query = SqlQueries.GetCacheItem;
-            }
-            else
-            {
-                query = SqlQueries.GetCacheItemWithoutValue;
-            }
-
-            byte[] value = null;
-            using (var connection = new SqlConnection(ConnectionString))
-            using (var command = new SqlCommand(query, connection))
-            {
-                command.Parameters
-                    .AddCacheItemId(key)
-                    .AddWithValue("UtcNow", SqlDbType.DateTimeOffset, utcNow);
-
-                await connection.OpenAsync(token).ConfigureAwait(false);
-
-                using (var reader = await command.ExecuteReaderAsync(
-                    CommandBehavior.SequentialAccess | CommandBehavior.SingleRow | CommandBehavior.SingleResult,
-                    token).ConfigureAwait(false))
-                {
-                    if (await reader.ReadAsync(token).ConfigureAwait(false))
-                    {
-                        if (includeValue)
-                        {
-                            value = await reader.GetFieldValueAsync<byte[]>(Columns.Indexes.CacheItemValueIndex, token).ConfigureAwait(false);
-                        }
-                    }
-                    else
-                    {
-                        return null;
-                    }
-                }
-            }
-
-            return value;
         }
 
         protected bool IsDuplicateKeyException(SqlException ex)

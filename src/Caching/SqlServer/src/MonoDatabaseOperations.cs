@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
 using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,24 +19,13 @@ namespace Microsoft.Extensions.Caching.SqlServer
         {
         }
 
-        protected override byte[] GetCacheItem(string key, bool includeValue)
+        public override byte[] GetCacheItem(string key)
         {
             var utcNow = SystemClock.UtcNow;
 
-            string query;
-            if (includeValue)
-            {
-                query = SqlQueries.GetCacheItem;
-            }
-            else
-            {
-                query = SqlQueries.GetCacheItemWithoutValue;
-            }
-
-            byte[] value = null;
             using (var connection = new SqlConnection(ConnectionString))
+            using (var command = new SqlCommand(SqlQueries.GetCacheItem, connection))
             {
-                var command = new SqlCommand(query, connection);
                 command.Parameters
                     .AddCacheItemId(key)
                     .AddWithValue("UtcNow", SqlDbType.DateTime, utcNow.UtcDateTime);
@@ -48,40 +36,24 @@ namespace Microsoft.Extensions.Caching.SqlServer
 
                 if (reader.Read())
                 {
-                    if (includeValue)
-                    {
-                        value = (byte[])reader[Columns.Indexes.CacheItemValueIndex];
-                    }
+                    return (byte[])reader[Columns.Indexes.CacheItemValueIndex];
                 }
                 else
                 {
                     return null;
                 }
             }
-
-            return value;
         }
 
-        protected override async Task<byte[]> GetCacheItemAsync(string key, bool includeValue, CancellationToken token = default(CancellationToken))
+        public override async Task<byte[]> GetCacheItemAsync(string key, CancellationToken token = default(CancellationToken))
         {
             token.ThrowIfCancellationRequested();
 
             var utcNow = SystemClock.UtcNow;
 
-            string query;
-            if (includeValue)
-            {
-                query = SqlQueries.GetCacheItem;
-            }
-            else
-            {
-                query = SqlQueries.GetCacheItemWithoutValue;
-            }
-
-            byte[] value = null;
             using (var connection = new SqlConnection(ConnectionString))
+            using (var command = new SqlCommand(SqlQueries.GetCacheItem, connection))
             {
-                var command = new SqlCommand(query, connection);
                 command.Parameters
                     .AddCacheItemId(key)
                     .AddWithValue("UtcNow", SqlDbType.DateTime, utcNow.UtcDateTime);
@@ -94,18 +66,13 @@ namespace Microsoft.Extensions.Caching.SqlServer
 
                 if (await reader.ReadAsync(token).ConfigureAwait(false))
                 {
-                    if (includeValue)
-                    {
-                        value = (byte[])reader[Columns.Indexes.CacheItemValueIndex];
-                    }
+                    return (byte[])reader[Columns.Indexes.CacheItemValueIndex];
                 }
                 else
                 {
                     return null;
                 }
             }
-
-            return value;
         }
 
         public override void SetCacheItem(string key, byte[] value, DistributedCacheEntryOptions options)
@@ -116,8 +83,8 @@ namespace Microsoft.Extensions.Caching.SqlServer
             ValidateOptions(options.SlidingExpiration, absoluteExpiration);
 
             using (var connection = new SqlConnection(ConnectionString))
+            using (var upsertCommand = new SqlCommand(SqlQueries.SetCacheItem, connection))
             {
-                var upsertCommand = new SqlCommand(SqlQueries.SetCacheItem, connection);
                 upsertCommand.Parameters
                     .AddCacheItemId(key)
                     .AddCacheItemValue(value)
@@ -156,8 +123,8 @@ namespace Microsoft.Extensions.Caching.SqlServer
             ValidateOptions(options.SlidingExpiration, absoluteExpiration);
 
             using (var connection = new SqlConnection(ConnectionString))
+            using (var upsertCommand = new SqlCommand(SqlQueries.SetCacheItem, connection))
             {
-                var upsertCommand = new SqlCommand(SqlQueries.SetCacheItem, connection);
                 upsertCommand.Parameters
                     .AddCacheItemId(key)
                     .AddCacheItemValue(value)
@@ -186,13 +153,50 @@ namespace Microsoft.Extensions.Caching.SqlServer
             }
         }
 
+        public override void RefreshCacheItem(string key)
+        {
+            var utcNow = SystemClock.UtcNow;
+
+            using (var connection = new SqlConnection(ConnectionString))
+            using (var command = new SqlCommand(SqlQueries.UpdateExpirationDate, connection))
+            {
+                command.Parameters
+                    .AddCacheItemId(key)
+                    .AddWithValue("UtcNow", SqlDbType.DateTime, utcNow.UtcDateTime);
+
+                connection.Open();
+
+                command.ExecuteNonQuery();
+            }
+        }
+
+        public override async Task RefreshCacheItemAsync(string key, CancellationToken token = default(CancellationToken))
+        {
+            token.ThrowIfCancellationRequested();
+
+            var utcNow = SystemClock.UtcNow;
+
+            using (var connection = new SqlConnection(ConnectionString))
+            using (var command = new SqlCommand(SqlQueries.UpdateExpirationDate, connection))
+            {
+                command.Parameters
+                    .AddCacheItemId(key)
+                    .AddWithValue("UtcNow", SqlDbType.DateTime, utcNow.UtcDateTime);
+
+                await connection.OpenAsync(token).ConfigureAwait(false);
+
+                await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+            }
+        }
+
+
         public override void DeleteExpiredCacheItems()
         {
             var utcNow = SystemClock.UtcNow;
 
             using (var connection = new SqlConnection(ConnectionString))
+            using (var command = new SqlCommand(SqlQueries.DeleteExpiredCacheItems, connection))
             {
-                var command = new SqlCommand(SqlQueries.DeleteExpiredCacheItems, connection);
                 command.Parameters.AddWithValue("UtcNow", SqlDbType.DateTime, utcNow.UtcDateTime);
 
                 connection.Open();

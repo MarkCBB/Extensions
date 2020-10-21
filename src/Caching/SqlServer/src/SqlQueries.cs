@@ -62,7 +62,7 @@ namespace Microsoft.Extensions.Caching.SqlServer
 
             // when retrieving an item, we do an UPDATE first and then a SELECT
             GetCacheItem = string.Format(UpdateCacheItemFormat + GetCacheItemFormat, tableNameWithSchema);
-            GetCacheItemWithoutValue = string.Format(UpdateCacheItemFormat, tableNameWithSchema);
+            UpdateExpirationDate = string.Format(UpdateCacheItemFormat, tableNameWithSchema);
             DeleteCacheItem = string.Format(DeleteCacheItemFormat, tableNameWithSchema);
             DeleteExpiredCacheItems = string.Format(DeleteExpiredCacheItemsFormat, tableNameWithSchema);
             SetCacheItem = string.Format(SetCacheItemFormat, tableNameWithSchema);
@@ -73,7 +73,7 @@ namespace Microsoft.Extensions.Caching.SqlServer
 
         public string GetCacheItem { get; }
 
-        public string GetCacheItemWithoutValue { get; }
+        public string UpdateExpirationDate { get; }
 
         public string SetCacheItem { get; }
 
